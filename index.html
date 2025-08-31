@@ -1,0 +1,270 @@
+<html><body>
+  <button>start</button>
+  <script>  // --- Setup Web Audio ---
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const masterGain = audioCtx.createGain();
+masterGain.gain.value = 0.15; // overall volume
+masterGain.connect(audioCtx.destination);
+
+// --- Gradient-descent tuning ---
+const idealRatios = [1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8];
+
+function resonanceCost(f, others) {
+  let cost = 0;
+  for (let o of others) {
+    if (o === f) continue;
+    let ratio = f / o;
+    let bestDiff = Infinity;
+    for (let r of idealRatios) {
+      let diff = Math.min(Math.abs(ratio - r), Math.abs(ratio - 1/r));
+      if (diff < bestDiff) bestDiff = diff;
+    }
+    cost += bestDiff * bestDiff;
+  }
+  return cost;
+}
+
+function tuneFrequencies(freqs, iterations = 3, stepSize = 0.5) {
+  let tuned = freqs.slice();
+  for (let it = 0; it < iterations; it++) {
+    let newFreqs = tuned.slice();
+    for (let i = 0; i < tuned.length; i++) {
+      const others = tuned.filter((_, j) => j !== i);
+      const current = tuned[i];
+      const costCurrent = resonanceCost(current, others);
+      const costUp = resonanceCost(current + stepSize, others);
+      const costDown = resonanceCost(current - stepSize, others);
+      if (costUp < costCurrent && costUp < costDown) newFreqs[i] += stepSize;
+      else if (costDown < costCurrent && costDown < costUp) newFreqs[i] -= stepSize;
+    }
+    tuned = newFreqs;
+  }
+  return tuned;
+}
+
+// --- MIDI to frequency ---
+function midiToFreq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
+
+// --- Play a single note ---
+function playNote(freq, dur = 1.0) {
+  const osc = audioCtx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  const env = audioCtx.createGain();
+  env.gain.setValueAtTime(0, audioCtx.currentTime);
+  env.gain.linearRampToValueAtTime(0.3+0.2*Math.random(), audioCtx.currentTime + 0.02);
+  env.gain.linearRampToValueAtTime(0.07, audioCtx.currentTime + 1);
+  env.gain.linearRampToValueAtTime(0, audioCtx.currentTime + dur);
+  osc.connect(env).connect(masterGain);
+  osc.start();
+  osc.stop(audioCtx.currentTime + dur);
+  const osc2 = audioCtx.createOscillator();
+  osc2.type = 'sine';
+  var r=1+8*Math.random();
+  r=Math.floor(r)/2;
+  osc2.frequency.value = freq+r;
+  const env2 = audioCtx.createGain();
+  env2.gain.setValueAtTime(0, audioCtx.currentTime);
+  env2.gain.linearRampToValueAtTime(0.4+0.1*Math.random(), audioCtx.currentTime + 0.02);
+  env2.gain.linearRampToValueAtTime(0.07, audioCtx.currentTime + 1);
+  env2.gain.linearRampToValueAtTime(0, audioCtx.currentTime + dur);
+  osc2.connect(env2).connect(masterGain);
+  osc2.start();
+  osc2.stop(audioCtx.currentTime + dur);
+}
+
+// --- Chord progression --- serene woodland
+/*const chordProg = [
+  [60,64,67],   // C major
+  [62,65,69],   // D minor
+  [59,63,67],   // B diminished
+  [60,64,69]    // C major 6
+];
+
+// --- Chord progression --- Misty Marsh
+const chordProg = [
+   [60, 63, 67],   // C minor
+    [65, 68, 72],   // F minor
+    [62, 65, 69],  // D minor
+    [60, 64, 69]   // C6
+];
+
+// --- Chord progression --- Mountain Heights
+const chordProg = [
+   [60, 63, 67],   // C minor
+    [65, 68, 72],   // F minor
+    [62, 65, 69],  // D minor
+    [60, 64, 69]   // C6
+];
+
+// --- Chord progression --- Shoreline
+const chordProg = [
+[60, 64, 67],       // C major
+[62, 65, 69],       // D minor
+[59, 62, 65],       // B diminished
+[60, 64, 69]       // C6
+];
+
+// --- Chord progression --- Village Serenity
+const chordProg = [
+[60, 63, 67],       // C minor
+[64, 67, 71],       // E minor
+[62, 65, 69],       // D minor
+[59, 62, 65]       // B diminished
+];
+
+
+
+// --- Chord progression --- Temple Grounds
+const chordProg = [
+[60, 64, 67],       // C major
+[57, 60, 64],       // A minor
+[55, 59, 62],       // G minor
+[62, 65, 69]       // D minor
+];
+
+// --- Chord progression --- Braca
+const chordProg = [
+[60, 64, 67],       // C major
+[61, 65, 68],       // C# major
+[62, 65, 69],       // D minor
+[64, 67, 71]       // E minor
+];
+// --- Chord progression --- Spiraller´s village.
+const chordProg = [
+[60, 63, 67],       // C minor
+[62, 65, 68],       // D minor
+[59, 62, 66],       // B diminished
+[61, 64, 68]       // C# diminished
+];
+
+const chordProg = [ // song of solace??
+[60, 64, 67],    // C major
+[62, 65, 69],    // D minor
+[57, 60, 64],    // A minor
+[59, 62, 65],    // B diminished
+[60, 64, 69],    // C6
+[65, 69, 72],    // F major
+[67, 71, 74],    // G major
+[62, 65, 69],    // D minor
+[60, 63, 67]    // C minor
+];
+
+const chordProg = [ // song of solace??
+
+[60, 64, 67, 71],   // Cmaj7 (Ionian)
+[62, 65, 69],       // Dm (Dorian)
+[57, 60, 64, 67],   // Am7 (Aeolian)
+[59, 62, 65],       // Bdim (Locrian flavor)
+[60, 64, 69, 72],   // C6/maj7 hybrid
+[65, 69, 72, 76],   // Fmaj7 (Lydian feel)
+[67, 71, 74, 77],   // G7sus4 (Mixolydian tension)
+[62, 65, 69, 72],   // Dm7 (Dorian)
+[60, 63, 67, 70],   // Cmin7 (Aeolian)
+];
+
+
+const chordProg = [ // Braca :)??
+
+[63, 66, 70, 73],   // Ebmin7 (Aeolian)
+[62, 66, 69, 73],   // Dmaj7 (Ionian)
+[64, 67, 71, 74],   // E♭maj7 (Lydian touch, raise 4th for lightness)
+[65, 69, 72, 76],   // Fmin7 (Dorian minor)
+[67, 70, 74, 77],   // G7sus4 (Mixolydian tension)
+[69, 72, 76, 79],   // A♭maj7 (Ionian/modal color)
+[70, 73, 77, 80],   // B♭min7 (Aeolian minor)
+[68, 71, 75, 78],   // G#dim7 (Locrian flavor, subtle tension)
+[62, 65, 69, 72]   // Dmaj7 modal conclusion (mix of Ionian/Dorian)
+
+];
+
+const chordProg = [ // Braca :)??
+
+[51, 54, 58, 61, 63,66,70,73,75,78,82,85],   // Ebmin7 (Aeolian)
+[50, 54, 57, 62, 62, 66, 69, 73,74,78,81,85],   // Dmaj7 (Ionian)
+[ 52, 55, 59, 62, 64, 67, 71, 74,76, 79, 83, 86],   // E♭maj7 (Lydian touch, raise 4th for lightness)
+[ 53, 57, 60, 64,65, 69, 72, 76,65, 69, 72, 76],  //Fmin7 Dorian (65,69,72,76) – gentle inversion
+[55, 58, 62, 65,67, 70, 74, 77, 79, 82, 86, 89],   // G7sus4 (Mixolydian tension)
+[57, 60, 64, 67,69, 72, 76, 79,81, 84, 88, 91],   // A♭maj7 (Ionian/modal color)
+[ 58, 61, 65, 68,70, 73, 77, 80,82, 85, 89, 92],   // B♭min7 (Aeolian minor)
+[56, 59, 63, 66,68, 71, 75, 78,80, 83, 87, 90],   // G#dim7 (Locrian flavor, subtle tension)
+[50, 53, 57, 60,62, 65, 69, 72]   // Dmaj7 modal conclusion (mix of Ionian/Dorian)
+
+];
+const chordProg = [ // song of solace??
+[60, 64, 67],    // C major
+[62, 65, 69],    // D minor
+[57, 60, 64],    // A minor
+[59, 62, 65],    // B diminished
+[60, 64, 69],    // C6
+[65, 69, 72],    // F major
+[67, 71, 74],    // G major
+[62, 65, 69],    // D minor
+[60, 63, 67]    // C minor
+];
+*/
+const chordProg = [ // song of solace??
+  [60,64,67],   // C major
+  [62,65,69],   // D minor
+  [59,63,67],   // B diminished
+  [60,64,69] ,   // C major 6
+  
+
+
+[60, 64, 67],    // C major
+[62, 65, 69],    // D minor
+[57, 60, 64],    // A minor
+[59, 62, 65],    // B diminished
+[60, 64, 69],    // C6
+[65, 69, 72],    // F major
+[67, 71, 74],    // G major
+[62, 65, 69],    // D minor
+[60, 63, 67],    // C minor
+
+  [60,64,67],   // C major
+  [62,65,69],   // D minor
+  [59,63,67],   // B diminished
+  [60,64,69] ,   // C major 6
+  
+
+[60,64,67],   // Cmaj7 (Ionian, start serene)
+[62,65,69],   // Dm7 (Dorian)
+[57,60,64],   // Am7 (Aeolian)
+[59,62,65],   // Bdim7 (Locrian flavor, subtle tension)
+
+[60,64,72],   // C6/maj7 hybrid
+[65,69,76],   // Fmaj7 (Lydian touch)
+[67,71,77],   // G7sus4 (Mixolydian tension)
+[69,72,79],   // A♭maj7 (modal color, soft surprise)
+
+[62,65,69,72],   // Dm7 (Dorian)
+[60,63,67,70],   // Cmin7 (Aeolian)
+[64,67,71,74],   // E♭maj7 (Lydian lift)
+[60,64,67,71]    // Cmaj7 (return home)
+
+];
+
+
+// --- Play progression as evolving arpeggio ---
+let currentChord = 0;
+function playStep() {
+  const chord = chordProg[currentChord].map(midiToFreq);
+  const tuned = tuneFrequencies(chord, 4, 0.3); // gradient-descent adjustment
+  const tempo=800;
+  // arpeggiate slowly
+  tuned.forEach((f, i) => {
+    setTimeout(() => playNote(f, 3*tempo/1000), i * tempo+Math.random()*tempo*0.15);// humanised..
+  });
+  currentChord = (currentChord + 1) % chordProg.length;
+  setTimeout(playStep, tempo*2); // slow 1 sec per chord base
+}
+
+// Start audio context on first user interaction
+document.body.addEventListener('click', () => {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  playStep();
+}, {once:true});
+
+console.log("Click anywhere to start the evolving arpeggio.");
+</script></body></html>
+
