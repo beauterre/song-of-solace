@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Zen Melody WebAudio</title>
+</head>
+<body>
+<h2>Zen Call & Response Melody</h2>
+<p>Click to start the meditation.</p>
+<button id="startBtn">Start</button>
+
+<script>
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+let ctx;
+let isPlaying = false;
+
+const melodyNotes = [
+  { note: 'G4', duration: 0.6 }, // Call
+  { note: 'E4', duration: 0.5 },
+  { note: 'C4', duration: 0.8 }, // Held slightly longer
+  { note: 'G4', duration: 0.5 }, // Response
+  { note: 'C4', duration: 0.5 },
+  { note: 'E4', duration: 0.5 },
+  { note: 'C5', duration: 0.6 } // High C
+];
+
+function midiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function noteToFreq(note) {
+  // Simple note-to-MIDI mapping
+  const notes = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
+  const octave = parseInt(note[note.length-1]);
+  const key = note[0];
+  return 440 * Math.pow(2, ((notes[key] + (octave+1)*12) - 69)/12);
+}
+
+function playNote(freq, duration, startTime, isDrone=false) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, startTime);
+
+  // Add subtle vibrato
+  const lfo = ctx.createOscillator();
+  const lfoGain = ctx.createGain();
+  lfo.frequency.setValueAtTime(5 + Math.random()*3, startTime); // 5-8Hz
+  lfoGain.gain.setValueAtTime(freq * 0.002, startTime); // small pitch variation
+  lfo.connect(lfoGain);
+  lfoGain.connect(osc.frequency);
+  lfo.start(startTime);
+  lfo.stop(startTime + duration);
+
+  // Envelope
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(isDrone ? 0.1 : 0.2, startTime + 0.05);
+  gain.gain.linearRampToValueAtTime(0, startTime + duration);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+function playMelody(rootMidi=60, droneMidi=48) {
+  const now = ctx.currentTime + 0.1;
+  let t = now;
+  const transpose = rootMidi - 60; // default assumes C4 base
+
+  // Calculate drone frequency
+  const droneFreq = midiToFreq(droneMidi);
+  playNote(droneFreq, 8, t, true); // long drone
+
+  melodyNotes.forEach(n => {
+    const freq = noteToFreq(n.note) * Math.pow(2, transpose/12);
+    // Add small random onset variations
+    const onsetVariation = (Math.random()-0.5) * 0.05;
+    playNote(freq, n.duration * (0.9 + Math.random()*0.2), t + onsetVariation);
+    t += n.duration;
+  });
+
+  // Loop after melody
+  setTimeout(() => playMelody(rootMidi, droneMidi), (t - now) * 1000);
+}
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  if (!isPlaying) {
+    ctx = new AudioContext();
+    playMelody(60, 48); // C4 root, C3 drone
+    isPlaying = true;
+  }
+});
+</script>
+</body>
+</html>
